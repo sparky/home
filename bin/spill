@@ -44,6 +44,7 @@ sub clean
 	unlink @_;
 }
 
+# unrar {{{
 sub unrar
 {
 	my $file = shift;
@@ -54,7 +55,9 @@ sub unrar
 	blue "File(s) @exfiles extracted.";
 	clean @exfiles;
 }
+# }}}
 
+# unzip {{{
 sub unzip_makedir
 {
 	local $_ = shift;
@@ -106,7 +109,9 @@ sub unzip
 	blue "File(s) @exfiles extracted.";
 	clean @exfiles;
 }
+# }}}
 
+# unsplit {{{
 sub fsize
 {
 	return (stat shift)[7];
@@ -172,6 +177,7 @@ sub unsplit
 	blue "Files @files extracted.";
 	clean @files;
 }
+# }}}
 
 sub spill
 {
@@ -187,6 +193,9 @@ sub spill
 	}
 }
 
+croak "spill [-c] <files>\n"
+	unless @ARGV;
+
 while ( $ARGV[0] =~ /^-(\S)(.*)?/ ) {
 	shift @ARGV;
 	last if $1 eq "-";
@@ -200,3 +209,5 @@ while ( my $file = shift @files ) {
 		spill( $file );
 	};
 }
+
+# vim: fdm=marker
