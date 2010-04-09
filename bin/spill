@@ -5,20 +5,36 @@
 
 use strict;
 use warnings;
+use Carp;
+
+sub green
+{
+	print "\033[1;32m", @_, "\033[0;37m\n";
+}
+
+sub cmd2lines
+{
+	my @cmd = @_;
+	my @lines;
+
+	open IN, "-|", @cmd
+		or croak "Cannot run command @cmd";
+	while ( <IN> ) {
+		push @lines, $_;
+		print $_;
+	}
+	close IN
+		or croak "Command @cmd failed";
+
+}
 
 sub unrar
 {
 	my $file = shift;
 
-	my @exfiles;
-	open IN, "-|", qw(unrar -idp x), $file;
-	while ( <IN> ) {
-		print $_;
-		push @exfiles, $1
-			if /^Extracting from (.*?)\s*$/;
-	}
-	close IN
-		or return undef;
+	green( "unrar $file" );
+	my @exfiles = map { /^Extracting from (.*?)\s*$/ }
+		cmd2lines( "unrar", "-idp", "x", $file );
 
 	print "File $file extracted.\n";
 	unlink @exfiles;
@@ -29,15 +45,9 @@ sub unzip
 {
 	my $file = shift;
 
-	my @exfiles;
-	open IN, "-|", "unzip", $file;
-	while ( <IN> ) {
-		print $_;
-		push @exfiles, $1
-			if /^Archive:\s+(.*?)\s*$/;
-	}
-	close IN
-		or return undef;
+	green( "unzip $file" );
+	my @exfiles = map { /^Archive:\s+(.*?)\s*$/ }
+		cmd2lines( "unzip", $file );
 
 	print "File $file extracted.\n";
 	unlink @exfiles;
@@ -57,29 +67,34 @@ sub unsplit
 	my @files = sort glob "$base.[0-9][0-9][0-9]";
 
 	# starts at .000 ?
-	return unless $files[0] eq $file;
+	croak "Invalid file $files[0]"
+		unless $files[0] eq $file;
 
 	my $last_file = pop @files;
 
 	# at least 2 files
-	return unless scalar @files >= 1;
+	croak "Not enough files"
+		unless scalar @files >= 1;
 
 	# number of files must be the same as number in last file
 	$last_file =~ /\.([0-9]{3})$/;
-	return unless $1 == 1 + scalar @files;
+	croak "Some file is missing"
+		unless $1 == 1 + scalar @files;
 
 	# last file must be smaller
-	return if $fs <= fsize $last_file;
+	croak "Cannot find last file"
+		if $fs <= fsize $last_file;
 
 	foreach my $f ( @files ) {
 		# all other files must have same size
-		return unless $fs == fsize $f;
+		croak "File $f has wrong size"
+			unless $fs == fsize $f;
 	}
 
 	push @files, $last_file;
 
 	$base =~ s#.*/##;
-	print "unsplitting '@files' to '$base'\n";
+	green( "cat @files > $base" );
 
 	open F_OUT, ">", $base
 		or return;
@@ -103,9 +118,9 @@ sub unsplit
 	unlink @files;
 }
 
-my @files = sort @ARGV;
-while ( my $file = shift @files ) {
-	next unless -r $file;
+sub spill
+{
+	my $file = shift;
 	if ( $file =~ /\.rar$/i ) {
 		unrar( $file );
 	} elsif ( $file =~ /\.zip$/i ) {
@@ -115,4 +130,12 @@ while ( my $file = shift @files ) {
 	} else {
 		print "Skipping $file\n";
 	}
+}
+
+my @files = sort @ARGV;
+while ( my $file = shift @files ) {
+	next unless -r $file;
+	eval {
+		spill( $file );
+	};
 }
