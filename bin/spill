@@ -7,9 +7,16 @@ use strict;
 use warnings;
 use Carp;
 
+my %opts;
+
 sub green
 {
 	print "\033[1;32m", @_, "\033[0;37m\n";
+}
+
+sub blue
+{
+	print "\033[1;34m", @_, "\033[0;37m\n";
 }
 
 sub cmd2lines
@@ -31,6 +38,12 @@ sub cmd2lines
 	return @lines;
 }
 
+sub clean
+{
+	return unless exists $opts{c};
+	unlink @_;
+}
+
 sub unrar
 {
 	my $file = shift;
@@ -38,8 +51,8 @@ sub unrar
 	my @exfiles = map { /^Extracting from (.*?)\s*$/ }
 		cmd2lines( "unrar", "-idp", "x", $file );
 
-	print "File $file extracted.\n";
-	unlink @exfiles;
+	blue "File(s) @exfiles extracted.";
+	clean @exfiles;
 }
 
 sub unzip
@@ -77,8 +90,8 @@ sub unzip
 	my @exfiles = map { /^Archive:\s+(.*?)\s*$/ }
 		cmd2lines( "unzip", @opts, $file );
 
-	print "File $file extracted.\n";
-	unlink @exfiles;
+	blue "File(s) @exfiles extracted.";
+	clean @exfiles;
 }
 
 sub fsize
@@ -143,7 +156,8 @@ sub unsplit
 	close F_OUT
 		or return;
 
-	unlink @files;
+	blue "Files @files extracted.";
+	clean @files;
 }
 
 sub spill
@@ -158,6 +172,12 @@ sub spill
 	} else {
 		print "Skipping $file\n";
 	}
+}
+
+while ( $ARGV[0] =~ /^-(\S)(.*)?/ ) {
+	shift @ARGV;
+	last if $1 eq "-";
+	$opts{ $1 } = $2;
 }
 
 my @files = sort @ARGV;
