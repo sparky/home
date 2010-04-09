@@ -17,6 +17,8 @@ sub cmd2lines
 	my @cmd = @_;
 	my @lines;
 
+	green( "@cmd" );
+
 	open IN, "-|", @cmd
 		or croak "Cannot run command @cmd";
 	while ( <IN> ) {
@@ -26,13 +28,13 @@ sub cmd2lines
 	close IN
 		or croak "Command @cmd failed";
 
+	return @lines;
 }
 
 sub unrar
 {
 	my $file = shift;
 
-	green( "unrar $file" );
 	my @exfiles = map { /^Extracting from (.*?)\s*$/ }
 		cmd2lines( "unrar", "-idp", "x", $file );
 
@@ -40,14 +42,40 @@ sub unrar
 	unlink @exfiles;
 }
 
-# do unzip -l to determine internal dirs
 sub unzip
 {
 	my $file = shift;
 
-	green( "unzip $file" );
+	my @files = cmd2lines( "unzip", "-l", $file );
+	do {
+		$_ = shift @files;
+	} until ( not $_ or /^-+/s );
+
+	$files[0] =~ m{^.*?:\d+\s+(.*?)/};
+	my $dir = $1;
+	if ( defined $dir ) {
+		while ( $_ = shift @files ) {
+			last unless /^.*?:\d+\s+(.*)$/;
+			$_ = $1;
+			m#(.*?)/#;
+			if ( not defined $1 or $dir ne $1 ) {
+				$dir = undef;
+				last;
+			}
+		}
+	}
+
+	my @opts;
+	unless ( $dir ) {
+		$_ = $file;
+	       	s{^.*/}{};
+		s{\.zip$}{}i;
+		mkdir $_;
+		push @opts, ("-d", $_);
+	}
+
 	my @exfiles = map { /^Archive:\s+(.*?)\s*$/ }
-		cmd2lines( "unzip", $file );
+		cmd2lines( "unzip", @opts, $file );
 
 	print "File $file extracted.\n";
 	unlink @exfiles;
