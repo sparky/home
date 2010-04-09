@@ -55,37 +55,50 @@ sub unrar
 	clean @exfiles;
 }
 
+sub unzip_makedir
+{
+	local $_ = shift;
+	s{^.*/}{};
+	s{\.zip$}{}i;
+	mkdir $_;
+	return ("-d", $_);
+}
+
+sub unzip_maybedir
+{
+	my $file = shift;
+	my @f = cmd2lines( "unzip", "-l", $file );
+	if ( $f[ $#f ] =~ /\s+1 file/ ) {
+		return ();
+	}
+
+	do {
+		return () unless @f;
+		$_ = shift @f;
+	} until ( /^-+/s );
+
+	$_ = shift @f;
+	m{^.*?:\d+\s+(.*?)/};
+	my $dir = $1;
+	return unzip_makedir( $file ) unless defined $dir;
+	while ( $_ = shift @f ) {
+		last unless /^.*?:\d+\s+(.*)$/;
+		$_ = $1;
+		m#(.*?)/#;
+		if ( not defined $1 or $dir ne $1 ) {
+			return unzip_makedir( $file );
+		}
+	}
+
+	return ();
+}
+
 sub unzip
 {
 	my $file = shift;
 
-	my @files = cmd2lines( "unzip", "-l", $file );
-	do {
-		$_ = shift @files;
-	} until ( not $_ or /^-+/s );
-
-	$files[0] =~ m{^.*?:\d+\s+(.*?)/};
-	my $dir = $1;
-	if ( defined $dir ) {
-		while ( $_ = shift @files ) {
-			last unless /^.*?:\d+\s+(.*)$/;
-			$_ = $1;
-			m#(.*?)/#;
-			if ( not defined $1 or $dir ne $1 ) {
-				$dir = undef;
-				last;
-			}
-		}
-	}
-
 	my @opts;
-	unless ( $dir ) {
-		$_ = $file;
-	       	s{^.*/}{};
-		s{\.zip$}{}i;
-		mkdir $_;
-		push @opts, ("-d", $_);
-	}
+	push @opts, unzip_maybedir( $file );
 
 	my @exfiles = map { /^Archive:\s+(.*?)\s*$/ }
 		cmd2lines( "unzip", @opts, $file );
