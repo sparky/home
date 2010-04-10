@@ -1,0 +1,97 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use IPC::SysV qw(S_IRUSR S_IWUSR IPC_PRIVATE IPC_CREAT);
+use IPC::SharedMem ();
+use Storable qw(freeze thaw);
+use Cwd qw(fastcwd abs_path);
+
+my $cmd = "terminal-open";
+
+sub obj2data
+{
+	return freeze( shift );
+}
+
+sub data2obj
+{
+	my $data = shift;
+	return undef unless defined $data;
+	return thaw( $data );
+}
+
+sub set
+{
+	die "$cmd: command missing\n"
+		unless scalar @_;
+	die "$cmd: $_[0]: command not found\n"
+		unless require_prog( $_[0] );
+
+	my %data = (
+		exec => \@_,
+		pwd => fastcwd(),
+		env => \%ENV,
+	);
+
+	my $shmid = 5324635 + $$;
+
+	my $data = obj2data( \%data );
+	my $len = length $data;
+	my $shm = IPC::SharedMem->new( $shmid, 4 + $len, S_IRUSR|S_IWUSR|IPC_CREAT );
+	$shm->write( pack( "N", $len ), 0, 4 );
+	$shm->write( $data, 4, $len );
+
+	exec "gnome-terminal", "--geometry=90x35", "-t", "@_", "-e", "$0 -$shmid";
+}
+
+sub get
+{
+	my $shmid = shift;
+
+	my $shm = IPC::SharedMem->new( $shmid, 0, S_IRUSR );
+	my $len = unpack( "N", $shm->read( 0, 4 ) );
+	my $data = $shm->read( 4, $len );
+	$shm->remove();
+
+	my $obj = data2obj( $data );
+	exec_command( $obj );
+}
+
+sub exec_command
+{
+	my $ret = shift;
+	my $exec = $ret->{exec};
+	my $pwd = $ret->{pwd};
+	my $env = $ret->{env};
+	chdir $pwd
+		or die "$cmd: Cannot change directory: $!\n";
+	print "\033[1;34m[$pwd]\$\033[0;37m @$exec\033[0;0m\n";
+	delete @ENV{ keys %ENV };
+	@ENV{ keys %$env } = values %$env;
+	exec { $exec->[0] } @$exec;
+	die "$cmd: Execution failed: $!\n";
+}
+
+
+sub require_prog
+{
+	my $prog = shift;
+	if ( $prog =~ m#/# and -x $prog ) {
+		return abs_path( $prog );
+	}
+	foreach my $dir ( split /:+/, $ENV{PATH} ) {
+		my $full = "$dir/$prog";
+		return $full if -x $full;
+	}
+	return undef;
+}
+
+die unless @ARGV;
+if ( $ARGV[0] =~ /-(\d+)/ ) {
+	get( $1 );
+} else {
+	set( @ARGV );
+}
+
+# vim: ts=4
