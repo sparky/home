@@ -18,5 +18,8 @@ PS4='\[\033[5m\]+\[\033[0m\] '
 setps
 unset setps
 
+[ $TERM == xterm ] && export TERM=xterm-256color
+
 # Put your local functions and aliases here
-alias google='perl -le "use URI::Escape; exec \"elinks\", \"http://www.google.es/search?q=\" . uri_escape( join \" \", @ARGV )"'
+alias google='perl -le "use URI::Escape; exec \"elinks\", \"http://www.google.com/search?q=\" . uri_escape( join \" \", @ARGV )"'
+alias t="terminal-open"
