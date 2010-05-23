@@ -1,0 +1,15 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use Fcntl qw(:flock SEEK_END);
+
+open my $mnew, ">>", "$ENV{HOME}/.newmail";
+flock $mnew, LOCK_EX or die "can't lock";
+seek $mnew, 0, SEEK_END;
+while ( <> ) {
+	print $mnew $_;
+}
+print $mnew "@" x 50 . "\n";
+flock $mnew, LOCK_UN or die "can't unlock";
+close $mnew;

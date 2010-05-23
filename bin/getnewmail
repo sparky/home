@@ -1,0 +1,34 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use Fcntl qw(:flock SEEK_SET);
+
+$SIG{PIPE} = sub { die "bye\n" };
+
+$| = 1;
+close STDIN;
+
+open my $mnew, "+<", "$ENV{HOME}/.newmail";
+
+sub check
+{
+	print "\n";
+	flock $mnew, LOCK_EX or die "can't lock";
+	seek $mnew, 0, SEEK_SET;
+	while ( <$mnew> ) {
+		print $_;
+	}
+	truncate $mnew, 0;
+	flock $mnew, LOCK_UN or die "can't unlock";
+}
+
+while ( 1 ) {
+	my $s = (stat $mnew)[7];
+	check() if $s > 0;
+	sleep 1;
+}
+
+END {
+	close $mnew;
+}
