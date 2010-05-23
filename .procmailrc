@@ -1,0 +1,112 @@
+MAILDIR=$HOME/Mail
+
+# put those at the beggining, because I don't want notification for them
+
+:0
+* ^Return-Path:.*libc-alpha
+/home/pld/sparky/Mail/soft-libc-alpha/
+
+:0
+* ^Return-Path:.*gcc-help.*gcc.gnu.org
+/home/pld/sparky/Mail/soft-gcc-help/
+
+:0
+* ^Return-Path:.*linuxppc-dev
+/home/pld/sparky/Mail/soft-linuxppc-dev/
+
+
+
+# notify about new received mail
+:0 c
+| /home/pld/sparky/bin/putnewmail
+
+
+:0
+* ^To:.*@rsget.pl
+/home/pld/sparky/Mail/rsget.pl/
+
+:0
+* ^Return-Path:.*pld-devel-en
+/home/pld/sparky/Mail/pld-devel-en/
+
+:0
+* ^Return-Path:.*pld-devel-pl
+/home/pld/sparky/Mail/pld-devel-pl/
+
+:0
+* ^Return-Path:.*pld-users-en
+/home/pld/sparky/Mail/pld-users-en/
+
+:0
+* ^Return-Path:.*pld-users-pl
+/home/pld/sparky/Mail/pld-users-pl/
+
+:0
+* ^Return-Path:.*pld-cvs-commit
+* ^Subject: DISTFILES: .* ERRORS:
+/home/pld/sparky/Mail/pld-cvs/
+
+:0
+* ^Return-Path:.*pld-cvs-commit
+* ^Subject: DISTFILES:
+/home/pld/sparky/Mail/pld-distfiles/
+
+:0
+* ^To:.*pld-cvs-commit
+* ^Subject: PLDWWW:
+/home/pld/sparky/Mail/pld-www/
+
+:0
+* ^Return-Path:.*pld-cvs-commit
+* ^Subject: SVN: toys/rsget.pl
+{
+	# ping cia about changes in rsget's svn
+	:0c
+	! ping+dyfclray@cia.vc
+
+	:0
+	/home/pld/sparky/Mail/pld-svn-rsget.pl/
+}
+
+:0
+* ^Return-Path:.*pld-cvs-commit
+* ^Subject: SVN:
+/home/pld/sparky/Mail/pld-svn/
+
+:0
+* ^Return-Path:.*pld-cvs-commit
+* ^Subject: packages
+/home/pld/sparky/Mail/pld-cvs-packages/
+
+:0
+* ^Return-Path:.*pld-cvs-commit
+/home/pld/sparky/Mail/pld-cvs/
+
+:0
+* ^Return-Path:.*pld-rc-scripts
+/home/pld/sparky/Mail/pld-rc-scripts/
+
+:0
+* ^Return-Path:.*yaboot
+/home/pld/sparky/Mail/soft-yaboot/
+
+:0
+* ^Return-path:.*lists.ioquake.org
+/home/pld/sparky/Mail/soft-ioquake3/
+
+:0
+* ^Return-path:.*urjtag-development.*lists.sourceforge.net
+/home/pld/sparky/Mail/soft-urjtag/
+
+:0
+* ^From:.*@pld-linux.org
+/home/pld/sparky/Mail/pld-other/
+
+:0
+* ^Return-path:.*ttyy-itnet-bounces
+/home/pld/sparky/Mail/tut-itnet/
+
+
+# if nothing matches, put it in main mbox
+:0
+/home/pld/sparky/Mail/mbox/
