@@ -1,0 +1,154 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use Encode qw(encode_utf8 decode); 
+use MIME::Base64;
+use MIME::QuotedPrint;
+use IPC::Open2;
+
+open2 \*SSHOUT, \*SSHIN, qw(ssh ep09.pld-linux.org ./bin/getnewmail);
+close SSHIN;
+
+sub ml
+{
+	local $_ = shift // '';
+	s/&/&amp;/g;
+	s/</&lt;/g;
+	s/>/&gt;/g;
+	s/"/&quot;/g;
+	return $_;
+}
+
+sub h
+{
+	local $_ = shift // '';
+	$_ = decode( "MIME-Header", $_ );
+	$_ =~ s/\s+/ /g;
+	return ml( $_ );
+}
+
+sub span
+{
+	my $text = shift;
+	my $i = shift;
+	my $c = 2 + $i * 2;
+	$c = 7 if $c > 7;
+
+	return "<span color=\"#$c$c$c\">$text</span>";
+}
+
+my %mail;
+while ( <SSHOUT> ) {
+	chomp;
+	s/\r$//;
+	if ( /^[@]{50}$/ ) {
+		$_ = $mail{body} // '';
+		my $cte = $mail{ "content-transfer-encoding" } // '';
+		if ( lc $cte eq "base64" ) {
+			$_ = decode_base64( $_ );
+		} elsif ( lc $cte eq "quoted-printable" ) {
+			$_ = decode_qp( $_ );
+		}
+		my $ct = $mail{ "content-type" } // '';
+		if ( $ct =~ /charset="(\S+?)"/ ) {
+			$_ = decode( $1, $_ );
+		} else {
+			$_ = encode_utf8( $_ );
+		}
+		
+		my $i = 0;
+		my @lines;
+		my $chars;
+		foreach ( split /\n+/, $_ ) {
+			# remove empty lines, including empty line inside response
+			next if /^[>\s]*$/;
+			# remove very old messages
+			next if /^\s*(>\s*){2}/;
+			# limit to 15 lines
+			last if ++$i > 15;
+
+			# mailing list signature
+			last if /^_{30,}$/;
+
+			$chars += length $_;
+			last if $chars > 600;
+
+			push @lines, ml $_;
+		}
+
+		$_ = '';
+		my $sig = 0;
+		my @out;
+		foreach my $line ( @lines ) {
+			my $i = 0;
+			if ( $sig or $line eq "-- " ) {
+				push @out, span( $line, 5 );
+				$sig = 1;
+			} elsif ( $line =~ /^\+/ ) {
+				push @out, "<span color=\"#292\">$line</span>";
+			} elsif ( $line =~ /^-/ ) {
+				push @out, "<span color=\"#922\">$line</span>";
+			} elsif ( $line =~ /^@@ / ) {
+				push @out, "<span color=\"#dd2\">$line</span>";
+			} else {
+				my $out = '';
+				while ( $line =~ s/^(\s*&gt;\s*)// ) {
+					$out .= span( $1, $i++ );
+				}
+				push @out, $out . span( $line, $i );
+			}
+		}
+
+		$mail{subject} =~ s/\s+/ /g;
+		addblist( $mail{from}, $mail{subject} );
+
+		system "notify-send", qw(-u low -i mail -t 15000),
+			# title
+			decode( "MIME-Header", $mail{subject} ),
+			# body
+			"<span color=\"red\">From: " . h( $mail{from} ) . "</span>\n" .
+			"<span color=\"green\">To: " . h( $mail{to} ) . "</span>\n" .
+			"<span color=\"blue\">Subject: " . h( $mail{subject} ) . "</span>\n" .
+			join "\n", @out
+			;
+		%mail = ();
+	} elsif ( exists $mail{body} ) {
+		$mail{body} .= $_ . "\n";
+	} elsif ( s/^(From|To|Subject|Content-Type|Content-Transfer-Encoding):\s+//i ) {
+		my $n = lc $1;
+		$mail{ $n } = $_;
+		$_ = <SSHOUT>;
+		chomp;
+		s/\r$//;
+		if ( /^\s+/ ) {
+			$mail{ $n } .= $_;
+		} else {
+			redo;
+		}
+	} elsif ( exists $mail{subject} and /^$/ ) {
+		$mail{body} = '';
+	}
+}
+
+sub addblist
+{
+	local $_ = shift;
+	return if /sparky\@pld-linux/;
+	$_ = shift;
+	s/^\s*packages:\s+// or return;
+	s#/.*## or return;
+	my $cleanbuilddir = "$ENV{HOME}/PLD";
+	open F_OUT, ">>", "$cleanbuilddir/blist";
+	print F_OUT $_ . "\n";
+	close F_OUT;
+	unlink "$cleanbuilddir/mbuild/ok.$_";
+	unlink "$cleanbuilddir/mbuild/fail.$_";
+}
+
+END {
+	close SSHOUT;
+	wait;
+}
+
+# vim: ts=4:sw=4
