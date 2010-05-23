@@ -9,6 +9,11 @@ use Carp;
 
 my %opts;
 
+sub red
+{
+	print "\033[1;31m", @_, "\033[0;37m\n";
+}
+
 sub green
 {
 	print "\033[1;32m", @_, "\033[0;37m\n";
@@ -41,6 +46,7 @@ sub cmd2lines
 sub clean
 {
 	return unless exists $opts{c};
+	red( "rm @_" );
 	unlink @_;
 }
 
