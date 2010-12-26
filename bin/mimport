@@ -1,0 +1,361 @@
+#!/usr/bin/perl
+#
+use strict;
+use warnings;
+use MP3::Info;
+
+my $outdir = "$ENV{HOME}/MUSIC/CHECK/";
+my $comment = "Sparky's music collection";
+my @lc = qw{a an and as at be by can de for from in is it la me my of off on or the to your with (live)};
+
+my $dir = shift @ARGV || die "Argument required";
+my %conf = @ARGV;
+
+$dir =~ s{/+$}{}; ## vim
+
+print "$dir:\n";
+
+my $gdir = quotemeta $dir;
+$gdir =~ s/\\\[/?/g;
+$gdir =~ s/\\\]/?/g;
+my @files = glob "$gdir/*.[Mm][Pp]3";
+
+die "Can't find mp3 files in $dir ($gdir)\n" unless @files;
+my @jpg = glob "$gdir/*.jpg";
+
+my $bitrate = 0;
+foreach ( @files ) {
+	my $i = get_mp3info( $_ );
+	$bitrate += $i->{BITRATE};
+}
+$bitrate /= scalar @files;
+if ( $bitrate > 180 ) {
+	$bitrate = 192;
+} elsif ( $bitrate > 150 ) {
+	$bitrate = 160;
+} else {
+	$bitrate = 128;
+}
+print "Output bitrate: $bitrate\n";
+
+my %g;
+$g{g} = "Metal";
+
+$_ = $dir;
+s#_# #g;
+if ( s#^(.+/|)\./(.*?)/## ) {
+	$g{a} = $2;
+} else {
+	s#^.*/##;
+	if ( s#^(.*?) - ## ) {
+		$g{a} = $1;
+	} elsif ( s#^(.*?)\s*-## ) {
+		$g{a} = $1;
+	} else {
+		warn "Can't guess autor\n";
+	}
+}
+$g{a} =~ s/\s*\(.*?\)$//g;
+s#^\s+##;
+
+while ( s/\s*\[(.*)\]$// ) {
+	my $y = $1;
+	if ( $y =~ /(\d{4})/ ) {
+		$g{y} = $1;
+	}
+}
+while ( s/\s*\((.*)\)$// ) {
+	my $y = $1;
+	if ( $y =~ /(\d{4})/ ) {
+		$g{y} = $1;
+	}
+}
+
+unless ( $g{y} ) {
+	if ( s#^(\d{4})\s*-\s*## ) {
+		$g{y} = $1;
+	} elsif ( s/(.+)\s*-\s*(\d{4}).*?$/$1/ ) {
+		$g{y} = $2;
+	} elsif ( s/^(\d{4})\s+// ) {
+		$g{y} = $1;
+	} elsif ( s/\s+(\d{4}).*?$// ) {
+		$g{y} = $1;
+	}
+
+}
+
+$g{t} = $_;
+
+my %lc = map { ( $_, 1) } @lc;
+sub ucfirst_all
+{
+	my $n = shift;
+	$n =~ s/_/ /g;
+	my @n = split /\s+/, $n;
+	my @out;
+	#push @out, ucfirst lc shift @n;
+	my $lastnotchar = 1;
+	foreach ( @n ) {
+		my $w = lc $_;
+		if ( $w =~ /^([vx]?i{1,4}|i[vx])$/ ) {
+			$w =~ s/^([\(\)]*)(.+)/$1 . uc $2/e;
+		} elsif ( $lastnotchar or not exists $lc{$w} ) {
+			$w =~ s/^([\(\)]*)(.+)/$1 . ucfirst $2/e;
+		}
+		$lastnotchar = ($w =~ /[-,\.;:]$/ ? 1 : 0);
+		push @out, $w;
+	}
+	join " ", @out;
+}
+
+
+$g{a} = ucfirst_all( $g{a} );
+$g{t} = ucfirst_all( $g{t} );
+
+
+
+my %gnames = (
+	a => "Artist",
+	t => "Album title",
+	y => "Year",
+	g => "Genre"
+);
+foreach ( qw(a t y g) ) {
+	my $opt = $conf{"-$_"};
+	$g{$_} = $opt if $opt;
+	die "$gnames{$_} ($_) not defined\n" unless $g{$_};
+	print "$gnames{$_}: $g{$_}\n";
+}
+
+my @f = map {
+	my $fn = $_;
+	my $w = $_;
+	$w =~ s#^.*/##;
+	use utf8;
+	utf8::decode( $w );
+	my @w = map { utf8::encode($_); $_ } split //, $w;
+	{ fn => $fn, w => [@w] };
+} @files;
+
+sub strip_all_eq_shift
+{
+	my $c = $f[0]->{w}->[0];
+	foreach ( @f ) {
+		return undef unless $_->{w}->[0] eq $c;
+	}
+	foreach ( @f ) {
+		shift @{$_->{w}};
+	}
+	return $c;
+}
+
+sub strip_all_eq_pop
+{
+	my $c = $f[0]->{w}->[-1];
+	foreach ( @f ) {
+		return undef unless $_->{w}->[-1] eq $c;
+	}
+	foreach ( @f ) {
+		pop @{$_->{w}};
+	}
+	return $c;
+}
+
+sub strip_all_num
+{
+	foreach ( @f ) {
+		return undef unless $_->{w}->[0] =~ m/\d/;
+	}
+	foreach ( @f ) {
+		my $n = shift @{$_->{w}};
+		$_->{n} = "" unless $_->{n};
+		$_->{n} .= $n;
+	}
+	return "X";
+}
+
+{
+	print "File names: ";
+	print $_ while ( defined( $_ = strip_all_eq_shift() ) );
+	print $_ while ( defined( $_ = strip_all_num() ) );
+	print $_ while ( defined( $_ = strip_all_eq_shift() ) );
+	my @end;
+	unshift @end, $_ while ( defined( $_ = strip_all_eq_pop() ) );
+	print "{title}" . (join "", @end) . "\n";
+}
+
+foreach my $f ( @f ) {
+	$f->{name} = ucfirst_all( join "", @{$f->{w}} );
+	$f->{n} //= "01";
+}
+
+print "Files:\n";
+foreach my $f ( sort { $a->{n} <=> $b->{n} }  @f ) {
+	my $fn = $f->{fn};
+	$fn =~ s#.*/##;
+	printf "- %s:\n   -->  %.2d. %s\n", $fn, $f->{n}, $f->{name};
+}
+
+
+my @nf;
+print "Introduce name list:\n";
+while ( <STDIN> ) {
+	chomp;
+	last unless length $_;
+	my $n;
+	my $q;
+	tr#/#-#;
+	if ( s/\s*(\d+)\.?\s+(")?// ) {
+		$n = $1;
+		$q = $2;
+	}
+	if ( $q ) {
+		s/".*//;
+	} else {
+		s/\t+.*// or
+			s/\s*(-\s*\d+:\d+)?$// or
+			s/\s*(—\s*\d+:\d+)?$//;
+	}
+	
+	foreach my $f ( @f ) {
+		next unless $f->{n} == $n;
+		$f->{name} = $_;
+	}
+}
+
+print "Files:\n";
+foreach my $f ( sort { $a->{n} <=> $b->{n} }  @f ) {
+	my $fn = $f->{fn};
+	$fn =~ s#.*/##;
+	$f->{out} = sprintf "%.2d. %s.mp3", $f->{n}, $f->{name};
+	printf "- %s:\n   -->  %s\n", $fn, $f->{out};
+}
+
+print "OK ? ";
+$_ = <STDIN>;
+chomp;
+exit unless $_ eq "y";
+
+use File::Copy;
+use MP3::Tag;
+
+sub mkdirv($)
+{
+	my $d = shift;
+	print "mkdir $d\n";
+	print "dir '$d' exists\n" if -d $d;
+	mkdir $d;
+}
+
+mkdirv $outdir . $g{a};
+my $t = $outdir . "$g{a}/$g{y} $g{t}";
+mkdirv $t;
+
+
+sub copyv($$)
+{
+	my $from = shift;
+	my $to = shift;
+
+	print "$from -> $to\n";
+	copy( $from, $to );
+}
+
+sub cover_art
+{
+	return $jpg[0] if scalar @jpg == 1;
+	foreach my $n ( qw(cover front) ) {
+		foreach ( @jpg ) {
+			return $_ if m/$n/i;
+		}
+	}
+	return $jpg[0];
+}
+
+if ( @jpg ) {
+	my $c = cover_art();
+	copyv $c, $t . "/cover.jpg";
+}
+
+
+my @tmpfiles;
+foreach my $f ( sort { $a->{n} <=> $b->{n} } @f ) {
+	my $out = $t . "/tmp." . $f->{out};
+	copyv $f->{fn}, $out;
+	push @tmpfiles, $out;
+}
+system qw(mp3gain -a -m 6 -c -s r), @tmpfiles;
+die "mp3gain failed" if $?;
+
+=old
+foreach my $f ( sort { $a->{n} <=> $b->{n} } @f ) {
+	my $tmp = $t . "/tmp." . $f->{out};
+	my $out = $t . "/" . $f->{out};
+
+	system qw(lame -q 0 --abr), $bitrate, $tmp, $out;
+	die "lame failed" if $?;
+
+
+	my $mp3 = MP3::Tag->new( $out );
+	$mp3->get_tags();
+	if ( exists $mp3->{ID3v1} ) {
+		$mp3->{ID3v1}->remove_tag();
+	}
+	if ( exists $mp3->{ID3v2} ) {
+		$mp3->{ID3v2}->remove_tag();
+	}
+
+	my $id3 = $mp3->new_tag( "ID3v2" );
+
+	$id3->add_frame("TIT2", $f->{name});
+	$id3->add_frame("TPE1", $g{a});
+	$id3->add_frame("TALB", $g{t});
+	$id3->add_frame("TYER", $g{y});
+	$id3->add_frame("COMM", 'ENG', '', $comment);
+	$id3->add_frame("TRCK", $f->{n});
+	$id3->add_frame("TCON", $g{g});
+	$id3->write_tag();
+	$mp3->close();
+}
+=cut
+
+foreach my $f ( sort { $a->{n} <=> $b->{n} } @f ) {
+	my $tmp = $t . "/tmp." . $f->{out};
+	my $out = $t . "/" . $f->{out};
+
+	system qw(pexec add lame -q 0 --abr), $bitrate, $tmp, $out;
+	die "lame failed" if $?;
+}
+
+system qw(pexec wait);
+die "lame failed" if $?;
+
+
+foreach my $f ( sort { $a->{n} <=> $b->{n} } @f ) {
+	my $tmp = $t . "/tmp." . $f->{out};
+	my $out = $t . "/" . $f->{out};
+
+	my $mp3 = MP3::Tag->new( $out );
+	$mp3->get_tags();
+	if ( exists $mp3->{ID3v1} ) {
+		$mp3->{ID3v1}->remove_tag();
+	}
+	if ( exists $mp3->{ID3v2} ) {
+		$mp3->{ID3v2}->remove_tag();
+	}
+
+	my $id3 = $mp3->new_tag( "ID3v2" );
+
+	$id3->add_frame("TIT2", $f->{name});
+	$id3->add_frame("TPE1", $g{a});
+	$id3->add_frame("TALB", $g{t});
+	$id3->add_frame("TYER", $g{y});
+	$id3->add_frame("COMM", 'ENG', '', $comment);
+	$id3->add_frame("TRCK", $f->{n});
+	$id3->add_frame("TCON", $g{g});
+	$id3->write_tag();
+	$mp3->close();
+}
+
+
+unlink @tmpfiles;
