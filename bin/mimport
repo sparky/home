@@ -3,10 +3,12 @@
 use strict;
 use warnings;
 use MP3::Info;
+use IO::Handle;
 
 my $outdir = "$ENV{HOME}/MUSIC/CHECK/";
+my $donedir = "$ENV{HOME}/downloads/music.done/";
 my $comment = "Sparky's music collection";
-my @lc = qw{a an and as at be by can de for from in is it la me my of off on or the to your with (live)};
+my @lc = qw{a an and as at be by can de des for from in is it la me my of off on or the to your with (live)};
 
 my $dir = shift @ARGV || die "Argument required";
 my %conf = @ARGV;
@@ -23,10 +25,13 @@ my @files = glob "$gdir/*.[Mm][Pp]3";
 die "Can't find mp3 files in $dir ($gdir)\n" unless @files;
 my @jpg = glob "$gdir/*.jpg";
 
+print "Checking bitrate:";
 my $bitrate = 0;
 foreach ( @files ) {
 	my $i = get_mp3info( $_ );
 	$bitrate += $i->{BITRATE};
+	print " " . $i->{BITRATE};
+	STDOUT->flush();
 }
 $bitrate /= scalar @files;
 if ( $bitrate > 180 ) {
@@ -36,7 +41,7 @@ if ( $bitrate > 180 ) {
 } else {
 	$bitrate = 128;
 }
-print "Output bitrate: $bitrate\n";
+print "\nOutput bitrate: $bitrate\n";
 
 my %g;
 $g{g} = "Metal";
@@ -193,7 +198,8 @@ print "Files:\n";
 foreach my $f ( sort { $a->{n} <=> $b->{n} }  @f ) {
 	my $fn = $f->{fn};
 	$fn =~ s#.*/##;
-	printf "- %s:\n   -->  %.2d. %s\n", $fn, $f->{n}, $f->{name};
+	my $i = get_mp3info( $f->{fn} );
+	printf "- %s: [$i->{TIME}]\n   -->  %.2d. %s\n", $fn, $f->{n}, $f->{name};
 }
 
 
@@ -257,7 +263,7 @@ sub copyv($$)
 	my $from = shift;
 	my $to = shift;
 
-	print "$from -> $to\n";
+	print "$from\n   -->  $to\n";
 	copy( $from, $to );
 }
 
@@ -284,6 +290,8 @@ foreach my $f ( sort { $a->{n} <=> $b->{n} } @f ) {
 	copyv $f->{fn}, $out;
 	push @tmpfiles, $out;
 }
+
+print "\nChecking volume\n";
 system qw(mp3gain -a -m 6 -c -s r), @tmpfiles;
 die "mp3gain failed" if $?;
 
@@ -327,10 +335,12 @@ foreach my $f ( sort { $a->{n} <=> $b->{n} } @f ) {
 	die "lame failed" if $?;
 }
 
+print "\nConverting MP3s\n";
 system qw(pexec wait);
 die "lame failed" if $?;
 
 
+print "\nFinished:\n  $t:\n";
 foreach my $f ( sort { $a->{n} <=> $b->{n} } @f ) {
 	my $tmp = $t . "/tmp." . $f->{out};
 	my $out = $t . "/" . $f->{out};
@@ -355,7 +365,12 @@ foreach my $f ( sort { $a->{n} <=> $b->{n} } @f ) {
 	$id3->add_frame("TCON", $g{g});
 	$id3->write_tag();
 	$mp3->close();
+
+	my $i = get_mp3info( $out );
+	print "[$i->{BITRATE}] [$i->{TIME}] $f->{out}\n";
 }
 
 
 unlink @tmpfiles;
+
+system "mv", "-v", $dir, $donedir;
